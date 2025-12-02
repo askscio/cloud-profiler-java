@@ -45,7 +45,6 @@ while getopts ":d:m:v:" opt; do
         ARM64_BUILD="1"
         FILE_SUFFIX="_arm64"
         ALPINE_BUILD="0"
-        echo "Building for ARM64 is provided only for testing."
       elif [[ "${TARGET}" == "alpine" ]]; then
         if [[ "${MACHINE_TYPE}" != "x86_64" ]]; then
           echo "-m alpine is supported only when running on an x86_64 system."
@@ -109,6 +108,7 @@ if [[ "${ALPINE_BUILD}" = "1" ]]; then
     DOCKERFILE="Dockerfile.alpine"
 elif [[ "${ARM64_BUILD}" = "1" ]]; then
     PrintMessage "Building the builder ARM64 Docker container..."
+    DOCKERFILE="Dockerfile.arm64"
 else
     PrintMessage "Building the builder Docker container..."
 fi

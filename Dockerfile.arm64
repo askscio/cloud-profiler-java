@@ -1,0 +1,132 @@
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+#
+# Base image - Use Ubuntu 20.04 for ARM64 (xenial is too old and has limited ARM64 support)
+#
+FROM ubuntu:focal
+
+#
+# Dependencies
+#
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install base dependencies
+RUN apt-get update && apt-get install -y \
+  apt-utils \
+  autoconf \
+  automake \
+  curl \
+  g++ \
+  git \
+  libtool \
+  make \
+  pkg-config \
+  unzip \
+  wget \
+  zlib1g-dev \
+  libssl-dev \
+  software-properties-common
+
+# Install OpenJDK 11
+RUN apt-get update && apt-get install -y openjdk-11-jdk-headless
+
+# Install CMake >= 3.13 from source (Kitware doesn't provide ARM64 packages for older Ubuntu)
+RUN mkdir /tmp/cmake && cd /tmp/cmake && \
+    curl -sL https://github.com/Kitware/CMake/releases/download/v3.27.7/cmake-3.27.7.tar.gz | \
+        tar xzv --strip=1 && \
+    ./bootstrap --parallel=$(nproc) && \
+    make -j$(nproc) && make install && \
+    cd ~ && rm -rf /tmp/cmake
+
+# openssl
+# This openssl (compiled with -fPIC) is used to statically link into the agent
+# shared library.
+ENV PKG_CONFIG_PATH=/usr/local/ssl/lib/pkgconfig
+RUN mkdir /tmp/openssl && cd /tmp/openssl && \
+    curl -sL https://github.com/openssl/openssl/archive/OpenSSL_1_1_1t.tar.gz | \
+        tar xzv --strip=1 && \
+    ./config no-shared -fPIC --openssldir=/usr/local/ssl --prefix=/usr/local/ssl && \
+    make -j$(nproc) && make install_sw && \
+    cd ~ && rm -rf /tmp/openssl
+
+# curl
+RUN git clone --depth=1 -b curl-8_10_1 https://github.com/curl/curl.git /tmp/curl && \
+    cd /tmp/curl && \
+    ./buildconf && \
+    ./configure --disable-ldap --disable-shared --without-libssh2 \
+                --without-librtmp --without-libidn --enable-static \
+                --without-libidn2 --without-libpsl \
+                --with-pic --with-ssl=/usr/local/ssl/ && \
+    make -j$(nproc) && make install && \
+    cd ~ && rm -rf /tmp/curl
+
+# gflags
+RUN git clone --depth=1 -b v2.1.2 https://github.com/gflags/gflags.git /tmp/gflags && \
+    cd /tmp/gflags && \
+    mkdir build && cd build && \
+    cmake -DCMAKE_CXX_FLAGS=-fpic -DGFLAGS_NAMESPACE=google .. && \
+    make -j$(nproc) && make install && \
+    cd ~ && rm -rf /tmp/gflags
+
+# google-glog
+RUN mkdir /tmp/glog && cd /tmp/glog && \
+    curl -sL https://github.com/google/glog/archive/v0.4.0.tar.gz | \
+        tar xzv --strip=1 && ./autogen.sh && ./configure --with-pic && \
+    make -j$(nproc) && make install && \
+    cd ~ && rm -rf /tmp/glog
+
+# gRPC & protobuf - build using CMake
+# Use the protobuf version from gRPC for everything to avoid conflicting
+# versions to be linked in. Disable OpenSSL embedding: when it's on, the build
+# process of gRPC puts the OpenSSL static object files into the gRPC archive
+# which causes link errors later when the agent is linked with the static
+# OpenSSL library itself.
+#
+# See https://github.com/grpc/grpc/blob/v1.46.7/test/distrib/cpp/run_distrib_test_cmake_pkgconfig.sh
+RUN git clone --depth=1 --recursive -b v1.46.7 https://github.com/grpc/grpc.git /tmp/grpc && \
+    cd /tmp/grpc/ && \
+    # Install protobuf
+    mkdir -p third_party/protobuf/cmake/build && \
+    (cd third_party/protobuf/cmake/build && \
+    cmake -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_CXX_STANDARD=11 -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE -DCMAKE_BUILD_TYPE=Release .. && \
+    make -j$(nproc) install) && \
+    # Install finish - protobuf
+    # Install gRPC
+    mkdir -p cmake/build && \
+    (cd cmake/build && \
+    cmake \
+        -DOPENSSL_ROOT_DIR=/usr/local/ssl            \
+        -DOPENSSL_INCLUDE_DIR=/usr/local/ssl/include \
+        -DOPENSSL_CRYPTO_LIB=/usr/local/ssl/lib      \
+        -DCMAKE_BUILD_TYPE=Release                   \
+        -DCMAKE_CXX_STANDARD=11                      \
+        -DCMAKE_INSTALL_PREFIX=/usr/local/grpc       \
+        -DgRPC_INSTALL=ON                            \
+        -DgRPC_BUILD_TESTS=OFF                       \
+        -DgRPC_ABSL_PROVIDER=module                  \
+        -DgRPC_CARES_PROVIDER=module                 \
+        -DgRPC_RE2_PROVIDER=module                   \
+        -DgRPC_ZLIB_PROVIDER=module                  \
+        -DgRPC_PROTOBUF_PROVIDER=package             \
+        -DgRPC_SSL_PROVIDER=package                  \
+        ../.. && \
+    make -j$(nproc) install) && \
+    cd ~ && rm -rf /tmp/grpc
+
+ENV PKG_CONFIG_PATH="${PKG_CONFIG_PATH}:/usr/local/ssl/lib/pkgconfig:/usr/local/grpc/lib/pkgconfig:/usr/local/lib64/pkgconfig"
+ENV PATH="${PATH}:/usr/local/grpc/bin"
+

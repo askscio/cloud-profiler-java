@@ -44,8 +44,8 @@ $ ./build.sh -m alpine
 
 ## To build for ARM64
 
-**Support for ARM64 is provided for testing purposes only.** The following
-commands must be run on an ARM64 machine. Cross compilation is not supported.
+The following commands must be run on an ARM64 machine (e.g., Apple Silicon Mac,
+AWS Graviton, or ARM64 Linux). Cross compilation is not supported.
 
 ```shell
 $ git clone https://github.com/GoogleCloudPlatform/cloud-profiler-java.git
