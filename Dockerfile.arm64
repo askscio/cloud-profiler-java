@@ -13,9 +13,11 @@
 # limitations under the License.
 
 #
-# Base image - Use Ubuntu 20.04 for ARM64 (xenial is too old and has limited ARM64 support)
+# Base image - Ubuntu 18.04 (Bionic) for ARM64
+# Has glibc 2.27 which is compatible with Amazon Linux 2 (glibc 2.26) and most Linux distros
+# Note: Xenial (16.04) has limited ARM64 support, so we use Bionic instead
 #
-FROM ubuntu:focal
+FROM ubuntu:bionic
 
 #
 # Dependencies
@@ -24,8 +26,19 @@ FROM ubuntu:focal
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install base dependencies
+# Install JDK 11 as sampling heap profiler depends on the new JVMTI APIs
+# Note: Kitware doesn't provide ARM64 CMake packages for older Ubuntu, so we build from source
 RUN apt-get update && apt-get install -y \
+  software-properties-common \
+  apt-transport-https \
+  ca-certificates \
+  gnupg \
+  wget && \
+  add-apt-repository -y ppa:openjdk-r/ppa && \
+  apt-get update
+
+# Everything we can get through apt-get
+RUN apt-get update && apt-get -y -q install \
   apt-utils \
   autoconf \
   automake \
@@ -34,17 +47,13 @@ RUN apt-get update && apt-get install -y \
   git \
   libtool \
   make \
+  openjdk-11-jdk-headless \
   pkg-config \
   unzip \
-  wget \
   zlib1g-dev \
-  libssl-dev \
-  software-properties-common
+  libssl-dev
 
-# Install OpenJDK 11
-RUN apt-get update && apt-get install -y openjdk-11-jdk-headless
-
-# Install CMake >= 3.13 from source (Kitware doesn't provide ARM64 packages for older Ubuntu)
+# Install CMake >= 3.13 from source (Kitware doesn't provide ARM64 packages for Bionic)
 RUN mkdir /tmp/cmake && cd /tmp/cmake && \
     curl -sL https://github.com/Kitware/CMake/releases/download/v3.27.7/cmake-3.27.7.tar.gz | \
         tar xzv --strip=1 && \
@@ -129,4 +138,3 @@ RUN git clone --depth=1 --recursive -b v1.46.7 https://github.com/grpc/grpc.git 
 
 ENV PKG_CONFIG_PATH="${PKG_CONFIG_PATH}:/usr/local/ssl/lib/pkgconfig:/usr/local/grpc/lib/pkgconfig:/usr/local/lib64/pkgconfig"
 ENV PATH="${PATH}:/usr/local/grpc/bin"
-

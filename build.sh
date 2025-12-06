@@ -116,10 +116,10 @@ docker build -f "${DOCKERFILE}" -t cprof-agent-builder . >> "${LOG_FILE}" 2>&1
 
 PrintMessage "Packaging the agent code..."
 mkdir -p "${BUILD_TEMP_DIR}"/build
-tar cf "${BUILD_TEMP_DIR}"/build/src.tar . >> "${LOG_FILE}" 2>&1
+COPYFILE_DISABLE=1 tar cf "${BUILD_TEMP_DIR}"/build/src.tar --exclude='.git' . >> "${LOG_FILE}" 2>&1
 
 PrintMessage "Building the agent..."
-docker run -ti -v "${BUILD_TEMP_DIR}/build":/root/build \
+docker run -i -v "${BUILD_TEMP_DIR}/build":/root/build \
     cprof-agent-builder bash \
     -c \
     "cd ~/build && tar xvf src.tar && make -f Makefile all \
@@ -127,7 +127,7 @@ docker run -ti -v "${BUILD_TEMP_DIR}/build":/root/build \
     >> "${LOG_FILE}" 2>&1
 
 PrintMessage "Packaging the agent binaries..."
-tar zcf "${BUILD_TEMP_DIR}"/profiler_java_agent${FILE_SUFFIX}.tar.gz \
+COPYFILE_DISABLE=1 tar zcf "${BUILD_TEMP_DIR}"/profiler_java_agent${FILE_SUFFIX}.tar.gz \
     -C "${BUILD_TEMP_DIR}"/build/.out \
     NOTICES profiler_java_agent.so \
     >> "${LOG_FILE}" 2>&1
