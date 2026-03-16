@@ -34,14 +34,13 @@ CFLAGS = \
 	$(shell pkg-config --cflags protobuf grpc)
 
 ifeq ($(machine_type),$(filter $(machine_type),aarch64 arm64))
-  # Building on an ARM64 machine.
-  # Use global-dynamic TLS model on ARM64 to avoid "cannot allocate memory in
-  # static TLS block" errors. ARM64 has limited static TLS space compared to x86.
+  # DO NOT add -DJAVAPROFILER_GLOBAL_DYNAMIC_TLS here.
+  # glibc's __tls_get_addr is NOT async-signal-safe; it causes JVM deadlocks
+  # when SIGPROF fires during malloc(). See: <link to RCA doc>
 	CFLAGS += \
 		-march=native \
 		-mtune=native \
-		-mcpu=native \
-		-DJAVAPROFILER_GLOBAL_DYNAMIC_TLS
+		-mcpu=native
 	JAVA_PATH ?= /usr/lib/jvm/java-11-openjdk-arm64
 else
 	CFLAGS += -m64
